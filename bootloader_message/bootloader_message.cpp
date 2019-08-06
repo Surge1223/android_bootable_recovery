@@ -24,19 +24,46 @@
 #include <vector>
 
 #include <android-base/file.h>
-#include <android-base/properties.h>
 #include <android-base/stringprintf.h>
 #include <android-base/unique_fd.h>
 #include <fs_mgr.h>
 
+#ifdef USE_OLD_BOOTLOADER_MESSAGE
+#include <sys/system_properties.h>
+
+static struct fstab* read_fstab(std::string* err) {
+  // The fstab path is always "/fstab.${ro.hardware}".
+  std::string fstab_path = "/fstab.";
+  char value[PROP_VALUE_MAX];
+  if (__system_property_get("ro.hardware", value) == 0) {
+    *err = "failed to get ro.hardware";
+    return nullptr;
+  }
+  fstab_path += value;
+  struct fstab* fstab = fs_mgr_read_fstab(fstab_path.c_str());
+  if (fstab == nullptr) {
+    *err = "failed to read " + fstab_path;
+  }
+  return fstab;
+}
+#endif
+
 static std::string get_misc_blk_device(std::string* err) {
+#ifdef USE_OLD_BOOTLOADER_MESSAGE
+  struct fstab* fstab = read_fstab(err);
+#else
   std::unique_ptr<fstab, decltype(&fs_mgr_free_fstab)> fstab(fs_mgr_read_fstab_default(),
                                                              fs_mgr_free_fstab);
+#endif
   if (!fstab) {
     *err = "failed to read default fstab";
     return "";
   }
+#ifdef USE_OLD_BOOTLOADER_MESSAGE
+  fstab_rec* record = fs_mgr_get_entry_for_mount_point(fstab, "/misc");
+#else
   fstab_rec* record = fs_mgr_get_entry_for_mount_point(fstab.get(), "/misc");
+#endif
   if (record == nullptr) {
     *err = "failed to find /misc partition";
     return "";

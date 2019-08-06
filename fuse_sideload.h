@@ -17,6 +17,10 @@
 #ifndef __FUSE_SIDELOAD_H
 #define __FUSE_SIDELOAD_H
 
+#ifdef USE_FUSE_SIDELOAD22
+#include "fuse_sideload22.h"
+#else
+
 #include <functional>
 
 // Define the filenames created by the sideload FUSE filesystem.
@@ -36,5 +40,16 @@ struct provider_vtab {
 
 int run_fuse_sideload(const provider_vtab& vtab, uint64_t file_size, uint32_t block_size,
                       const char* mount_point = FUSE_SIDELOAD_HOST_MOUNTPOINT);
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+int run_old_fuse_sideload(const struct provider_vtab& vtab, void* cookie,
+                      uint64_t file_size, uint32_t block_size);
+#ifdef __cplusplus
+}
+#endif
+
+#endif
 
 #endif

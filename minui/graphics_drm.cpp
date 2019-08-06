@@ -117,6 +117,8 @@ GRSurfaceDrm* MinuiBackendDrm::DrmCreateSurface(int width, int height) {
   format = DRM_FORMAT_RGBA8888;
 #elif defined(RECOVERY_BGRA)
   format = DRM_FORMAT_ARGB8888;
+#elif defined(RECOVERY_RGBA)
+  format = DRM_FORMAT_ARGB8888;
 #elif defined(RECOVERY_RGBX)
   format = DRM_FORMAT_XBGR8888;
 #else

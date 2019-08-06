@@ -17,6 +17,12 @@
 #ifndef _ADB_INSTALL_H
 #define _ADB_INSTALL_H
 
-int apply_from_adb(bool* wipe_cache, const char* install_file);
+#include <sys/types.h>
+
+//class RecoveryUI;
+
+//static void set_usb_driver(bool enabled);
+//static void maybe_restart_adbd();
+int apply_from_adb(const char* install_file, pid_t* child_pid);
 
 #endif

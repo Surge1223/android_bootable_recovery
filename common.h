@@ -19,17 +19,36 @@
 
 #include <stdio.h>
 #include <stdarg.h>
-
 #include <string>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#define LOGE(...) fprintf(stdout, "E:" __VA_ARGS__)
+#define LOGW(...) fprintf(stdout, "W:" __VA_ARGS__)
+#define LOGI(...) fprintf(stdout, "I:" __VA_ARGS__)
+
+#if 0
+#define LOGV(...) fprintf(stdout, "V:" __VA_ARGS__)
+#define LOGD(...) fprintf(stdout, "D:" __VA_ARGS__)
+#else
+#define LOGV(...) do {} while (0)
+#define LOGD(...) do {} while (0)
+#endif
+
+#define STRINGIFY(x) #x
+#define EXPAND(x) STRINGIFY(x)
 
 // Not using the command-line defined macro here because this header could be included by
 // device-specific recovery libraries. We static assert the value consistency in recovery.cpp.
-static constexpr int kRecoveryApiVersion = 3;
+//static constexpr int kRecoveryApiVersion = 3;
 
 class RecoveryUI;
 
 extern RecoveryUI* ui;
 extern bool modified_flash;
+//typedef struct fstab_rec Volume;
 
 // The current stage, e.g. "1/2".
 extern std::string stage;
@@ -42,7 +61,11 @@ FILE* fopen_path(const char *path, const char *mode);
 
 void ui_print(const char* format, ...);
 
-bool is_ro_debuggable();
+//static bool is_ro_debuggable();
+
+#ifdef __cplusplus
+}
+#endif
 
 bool reboot(const std::string& command);
 

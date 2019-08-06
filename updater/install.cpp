@@ -58,6 +58,20 @@
 
 #include "edify/expr.h"
 #include "mounts.h"
+
+#include "applypatch/applypatch.h"
+#include "flashutils/flashutils.h"
+#include "install.h"
+#ifdef HAVE_LIBTUNE2FS
+#include "tune2fs.h"
+#endif
+
+#ifdef USE_EXT4
+#include "make_ext4fs.h"
+#include "wipe.h"
+#endif
+
+#include "otautil/ZipUtil.h"
 #include "otafault/ota_io.h"
 #include "otautil/DirUtil.h"
 #include "otautil/error_code.h"
@@ -603,6 +617,67 @@ Value* FormatFn(const char* name, State* state, const std::vector<std::unique_pt
   return nullptr;
 }
 
+// rename(src_name, dst_name)
+//   Renames src_name to dst_name. It automatically creates the necessary directories for dst_name.
+//   Example: rename("system/app/Hangouts/Hangouts.apk", "system/priv-app/Hangouts/Hangouts.apk")
+Value* RenameFn(const char* name, State* state, const std::vector<std::unique_ptr<Expr>>& argv) {
+  if (argv.size() != 2) {
+    return ErrorAbort(state, kArgsParsingFailure, "%s() expects 2 args, got %zu", name,
+                      argv.size());
+  }
+
+  std::vector<std::string> args;
+  if (!ReadArgs(state, argv, &args)) {
+    return ErrorAbort(state, kArgsParsingFailure, "%s() Failed to parse the argument(s)", name);
+  }
+  const std::string& src_name = args[0];
+  const std::string& dst_name = args[1];
+
+  if (src_name.empty()) {
+    return ErrorAbort(state, kArgsParsingFailure, "src_name argument to %s() can't be empty", name);
+  }
+  if (dst_name.empty()) {
+    return ErrorAbort(state, kArgsParsingFailure, "dst_name argument to %s() can't be empty", name);
+  }
+  if (!make_parents(dst_name)) {
+    return ErrorAbort(state, kFileRenameFailure, "Creating parent of %s failed, error %s",
+                      dst_name.c_str(), strerror(errno));
+  } else if (access(dst_name.c_str(), F_OK) == 0 && access(src_name.c_str(), F_OK) != 0) {
+    // File was already moved
+    return StringValue(dst_name);
+  } else if (rename(src_name.c_str(), dst_name.c_str()) != 0) {
+    return ErrorAbort(state, kFileRenameFailure, "Rename of %s to %s failed, error %s",
+                      src_name.c_str(), dst_name.c_str(), strerror(errno));
+  }
+
+  return StringValue(dst_name);
+}
+
+// delete([filename, ...])
+//   Deletes all the filenames listed. Returns the number of files successfully deleted.
+//
+// delete_recursive([dirname, ...])
+//   Recursively deletes dirnames and all their contents. Returns the number of directories
+//   successfully deleted.
+Value* DeleteFn(const char* name, State* state, const std::vector<std::unique_ptr<Expr>>& argv) {
+  std::vector<std::string> paths;
+  if (!ReadArgs(state, argv, &paths)) {
+    return nullptr;
+  }
+
+  bool recursive = (strcmp(name, "delete_recursive") == 0);
+
+  int success = 0;
+  for (const auto& path : paths) {
+    if ((recursive ? dirUnlinkHierarchy(path.c_str()) : unlink(path.c_str())) == 0) {
+      ++success;
+    }
+  }
+
+  return StringValue(std::to_string(success));
+}
+
+
 Value* ShowProgressFn(const char* name, State* state,
                       const std::vector<std::unique_ptr<Expr>>& argv) {
   if (argv.size() != 2) {
@@ -747,6 +822,375 @@ Value* PackageExtractDirFn(const char* name, State* state,
   bool success = ExtractPackageRecursive(za, zip_path, dest_path, &timestamp, sehandle);
 
   return StringValue(success ? "t" : "");
+}
+
+// package_extract_file(package_file[, dest_file])
+//   Extracts a single package_file from the update package and writes it to dest_file,
+//   overwriting existing files if necessary. Without the dest_file argument, returns the
+//   contents of the package file as a binary blob.
+Value* PackageExtractFileFn(const char* name, State* state,
+                            const std::vector<std::unique_ptr<Expr>>& argv) {
+  if (argv.size() < 1 || argv.size() > 2) {
+    return ErrorAbort(state, kArgsParsingFailure, "%s() expects 1 or 2 args, got %zu", name,
+                      argv.size());
+  }
+
+  if (argv.size() == 2) {
+    // The two-argument version extracts to a file.
+
+    std::vector<std::string> args;
+    if (!ReadArgs(state, argv, &args)) {
+      return ErrorAbort(state, kArgsParsingFailure, "%s() Failed to parse %zu args", name,
+                        argv.size());
+    }
+    const std::string& zip_path = args[0];
+    const std::string& dest_path = args[1];
+
+    ZipArchiveHandle za = static_cast<UpdaterInfo*>(state->cookie)->package_zip;
+    ZipString zip_string_path(zip_path.c_str());
+    ZipEntry entry;
+    if (FindEntry(za, zip_string_path, &entry) != 0) {
+      LOG(ERROR) << name << ": no " << zip_path << " in package";
+      return StringValue("");
+    }
+
+    unique_fd fd(TEMP_FAILURE_RETRY(
+        ota_open(dest_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR)));
+    if (fd == -1) {
+      PLOG(ERROR) << name << ": can't open " << dest_path << " for write";
+      return StringValue("");
+    }
+
+    bool success = true;
+    int32_t ret = ExtractEntryToFile(za, &entry, fd);
+    if (ret != 0) {
+      LOG(ERROR) << name << ": Failed to extract entry \"" << zip_path << "\" ("
+                 << entry.uncompressed_length << " bytes) to \"" << dest_path
+                 << "\": " << ErrorCodeString(ret);
+      success = false;
+    }
+    if (ota_fsync(fd) == -1) {
+      PLOG(ERROR) << "fsync of \"" << dest_path << "\" failed";
+      success = false;
+    }
+    if (ota_close(fd) == -1) {
+      PLOG(ERROR) << "close of \"" << dest_path << "\" failed";
+      success = false;
+    }
+
+    return StringValue(success ? "t" : "");
+  } else {
+    // The one-argument version returns the contents of the file as the result.
+
+    std::vector<std::string> args;
+    if (!ReadArgs(state, argv, &args)) {
+      return ErrorAbort(state, kArgsParsingFailure, "%s() Failed to parse %zu args", name,
+                        argv.size());
+    }
+    const std::string& zip_path = args[0];
+
+    ZipArchiveHandle za = static_cast<UpdaterInfo*>(state->cookie)->package_zip;
+    ZipString zip_string_path(zip_path.c_str());
+    ZipEntry entry;
+    if (FindEntry(za, zip_string_path, &entry) != 0) {
+      return ErrorAbort(state, kPackageExtractFileFailure, "%s(): no %s in package", name,
+                        zip_path.c_str());
+    }
+
+    std::string buffer;
+    buffer.resize(entry.uncompressed_length);
+
+    int32_t ret = ExtractToMemory(za, &entry, reinterpret_cast<uint8_t*>(&buffer[0]), buffer.size());
+    if (ret != 0) {
+      return ErrorAbort(state, kPackageExtractFileFailure,
+                        "%s: Failed to extract entry \"%s\" (%zu bytes) to memory: %s", name,
+                        zip_path.c_str(), buffer.size(), ErrorCodeString(ret));
+    }
+
+    return new Value(VAL_BLOB, buffer);
+  }
+}
+
+// symlink(target, [src1, src2, ...])
+//   Creates all sources as symlinks to target. It unlinks any previously existing src1, src2, etc
+//   before creating symlinks.
+Value* SymlinkFn(const char* name, State* state, const std::vector<std::unique_ptr<Expr>>& argv) {
+  if (argv.size() == 0) {
+    return ErrorAbort(state, kArgsParsingFailure, "%s() expects 1+ args, got %zu", name, argv.size());
+  }
+  std::string target;
+  if (!Evaluate(state, argv[0], &target)) {
+    return nullptr;
+  }
+
+  std::vector<std::string> srcs;
+  if (!ReadArgs(state, argv, &srcs, 1, argv.size())) {
+    return ErrorAbort(state, kArgsParsingFailure, "%s(): Failed to parse the argument(s)", name);
+  }
+
+  size_t bad = 0;
+  for (const auto& src : srcs) {
+    if (unlink(src.c_str()) == -1 && errno != ENOENT) {
+      PLOG(ERROR) << name << ": failed to remove " << src;
+      ++bad;
+    } else if (!make_parents(src)) {
+      LOG(ERROR) << name << ": failed to symlink " << src << " to " << target
+                 << ": making parents failed";
+      ++bad;
+    } else if (symlink(target.c_str(), src.c_str()) == -1) {
+      PLOG(ERROR) << name << ": failed to symlink " << src << " to " << target;
+      ++bad;
+    }
+  }
+  if (bad != 0) {
+    return ErrorAbort(state, kSymlinkFailure, "%s: Failed to create %zu symlink(s)", name, bad);
+  }
+  return StringValue("t");
+}
+
+struct perm_parsed_args {
+  bool has_uid;
+  uid_t uid;
+  bool has_gid;
+  gid_t gid;
+  bool has_mode;
+  mode_t mode;
+  bool has_fmode;
+  mode_t fmode;
+  bool has_dmode;
+  mode_t dmode;
+  bool has_selabel;
+  const char* selabel;
+  bool has_capabilities;
+  uint64_t capabilities;
+};
+
+static struct perm_parsed_args ParsePermArgs(State * state,
+                                             const std::vector<std::string>& args) {
+  struct perm_parsed_args parsed;
+  int bad = 0;
+  static int max_warnings = 20;
+
+  memset(&parsed, 0, sizeof(parsed));
+
+  for (size_t i = 1; i < args.size(); i += 2) {
+    if (args[i] == "uid") {
+      int64_t uid;
+      if (sscanf(args[i + 1].c_str(), "%" SCNd64, &uid) == 1) {
+        parsed.uid = uid;
+        parsed.has_uid = true;
+      } else {
+        uiPrintf(state, "ParsePermArgs: invalid UID \"%s\"\n", args[i + 1].c_str());
+        bad++;
+      }
+      continue;
+    }
+    if (args[i] == "gid") {
+      int64_t gid;
+      if (sscanf(args[i + 1].c_str(), "%" SCNd64, &gid) == 1) {
+        parsed.gid = gid;
+        parsed.has_gid = true;
+      } else {
+        uiPrintf(state, "ParsePermArgs: invalid GID \"%s\"\n", args[i + 1].c_str());
+        bad++;
+      }
+      continue;
+    }
+    if (args[i] == "mode") {
+      int32_t mode;
+      if (sscanf(args[i + 1].c_str(), "%" SCNi32, &mode) == 1) {
+        parsed.mode = mode;
+        parsed.has_mode = true;
+      } else {
+        uiPrintf(state, "ParsePermArgs: invalid mode \"%s\"\n", args[i + 1].c_str());
+        bad++;
+      }
+      continue;
+    }
+    if (args[i] == "dmode") {
+      int32_t mode;
+      if (sscanf(args[i + 1].c_str(), "%" SCNi32, &mode) == 1) {
+        parsed.dmode = mode;
+        parsed.has_dmode = true;
+      } else {
+        uiPrintf(state, "ParsePermArgs: invalid dmode \"%s\"\n", args[i + 1].c_str());
+        bad++;
+      }
+      continue;
+    }
+    if (args[i] == "fmode") {
+      int32_t mode;
+      if (sscanf(args[i + 1].c_str(), "%" SCNi32, &mode) == 1) {
+        parsed.fmode = mode;
+        parsed.has_fmode = true;
+      } else {
+        uiPrintf(state, "ParsePermArgs: invalid fmode \"%s\"\n", args[i + 1].c_str());
+        bad++;
+      }
+      continue;
+    }
+    if (args[i] == "capabilities") {
+      int64_t capabilities;
+      if (sscanf(args[i + 1].c_str(), "%" SCNi64, &capabilities) == 1) {
+        parsed.capabilities = capabilities;
+        parsed.has_capabilities = true;
+      } else {
+        uiPrintf(state, "ParsePermArgs: invalid capabilities \"%s\"\n", args[i + 1].c_str());
+        bad++;
+      }
+      continue;
+    }
+    if (args[i] == "selabel") {
+      if (!args[i + 1].empty()) {
+        parsed.selabel = args[i + 1].c_str();
+        parsed.has_selabel = true;
+      } else {
+        uiPrintf(state, "ParsePermArgs: invalid selabel \"%s\"\n", args[i + 1].c_str());
+        bad++;
+      }
+      continue;
+    }
+    if (max_warnings != 0) {
+      printf("ParsedPermArgs: unknown key \"%s\", ignoring\n", args[i].c_str());
+      max_warnings--;
+      if (max_warnings == 0) {
+        LOG(INFO) << "ParsedPermArgs: suppressing further warnings";
+      }
+    }
+  }
+  return parsed;
+}
+
+static int ApplyParsedPerms(State* state, const char* filename, const struct stat* statptr,
+                            struct perm_parsed_args parsed) {
+  int bad = 0;
+
+  if (parsed.has_selabel) {
+    if (lsetfilecon(filename, parsed.selabel) != 0) {
+      uiPrintf(state, "ApplyParsedPerms: lsetfilecon of %s to %s failed: %s\n", filename,
+               parsed.selabel, strerror(errno));
+      bad++;
+    }
+  }
+
+  /* ignore symlinks */
+  if (S_ISLNK(statptr->st_mode)) {
+    return bad;
+  }
+
+  if (parsed.has_uid) {
+    if (chown(filename, parsed.uid, -1) < 0) {
+      uiPrintf(state, "ApplyParsedPerms: chown of %s to %d failed: %s\n", filename, parsed.uid,
+               strerror(errno));
+      bad++;
+    }
+  }
+
+  if (parsed.has_gid) {
+    if (chown(filename, -1, parsed.gid) < 0) {
+      uiPrintf(state, "ApplyParsedPerms: chgrp of %s to %d failed: %s\n", filename, parsed.gid,
+               strerror(errno));
+      bad++;
+    }
+  }
+
+  if (parsed.has_mode) {
+    if (chmod(filename, parsed.mode) < 0) {
+      uiPrintf(state, "ApplyParsedPerms: chmod of %s to %d failed: %s\n", filename, parsed.mode,
+               strerror(errno));
+      bad++;
+    }
+  }
+
+  if (parsed.has_dmode && S_ISDIR(statptr->st_mode)) {
+    if (chmod(filename, parsed.dmode) < 0) {
+      uiPrintf(state, "ApplyParsedPerms: chmod of %s to %d failed: %s\n", filename, parsed.dmode,
+               strerror(errno));
+      bad++;
+    }
+  }
+
+  if (parsed.has_fmode && S_ISREG(statptr->st_mode)) {
+    if (chmod(filename, parsed.fmode) < 0) {
+      uiPrintf(state, "ApplyParsedPerms: chmod of %s to %d failed: %s\n", filename, parsed.fmode,
+               strerror(errno));
+      bad++;
+    }
+  }
+
+  if (parsed.has_capabilities && S_ISREG(statptr->st_mode)) {
+    if (parsed.capabilities == 0) {
+      if ((removexattr(filename, XATTR_NAME_CAPS) == -1) && (errno != ENODATA)) {
+        // Report failure unless it's ENODATA (attribute not set)
+        uiPrintf(state, "ApplyParsedPerms: removexattr of %s to %" PRIx64 " failed: %s\n", filename,
+                 parsed.capabilities, strerror(errno));
+        bad++;
+      }
+    } else {
+      struct vfs_cap_data cap_data;
+      memset(&cap_data, 0, sizeof(cap_data));
+      cap_data.magic_etc = VFS_CAP_REVISION | VFS_CAP_FLAGS_EFFECTIVE;
+      cap_data.data[0].permitted = (uint32_t)(parsed.capabilities & 0xffffffff);
+      cap_data.data[0].inheritable = 0;
+      cap_data.data[1].permitted = (uint32_t)(parsed.capabilities >> 32);
+      cap_data.data[1].inheritable = 0;
+      if (setxattr(filename, XATTR_NAME_CAPS, &cap_data, sizeof(cap_data), 0) < 0) {
+        uiPrintf(state, "ApplyParsedPerms: setcap of %s to %" PRIx64 " failed: %s\n", filename,
+                 parsed.capabilities, strerror(errno));
+        bad++;
+      }
+    }
+  }
+
+  return bad;
+}
+
+// nftw doesn't allow us to pass along context, so we need to use
+// global variables.  *sigh*
+static struct perm_parsed_args recursive_parsed_args;
+static State* recursive_state;
+
+static int do_SetMetadataRecursive(const char* filename, const struct stat* statptr, int fileflags,
+                                   struct FTW* pfwt) {
+  return ApplyParsedPerms(recursive_state, filename, statptr, recursive_parsed_args);
+}
+
+static Value* SetMetadataFn(const char* name, State* state, const std::vector<std::unique_ptr<Expr>>& argv) {
+  if ((argv.size() % 2) != 1) {
+    return ErrorAbort(state, kArgsParsingFailure, "%s() expects an odd number of arguments, got %zu",
+                      name, argv.size());
+  }
+
+  std::vector<std::string> args;
+  if (!ReadArgs(state, argv, &args)) {
+    return ErrorAbort(state, kArgsParsingFailure, "%s() Failed to parse the argument(s)", name);
+  }
+
+  struct stat sb;
+  if (lstat(args[0].c_str(), &sb) == -1) {
+    return ErrorAbort(state, kSetMetadataFailure, "%s: Error on lstat of \"%s\": %s", name,
+                      args[0].c_str(), strerror(errno));
+  }
+
+  struct perm_parsed_args parsed = ParsePermArgs(state, args);
+  int bad = 0;
+  bool recursive = (strcmp(name, "set_metadata_recursive") == 0);
+
+  if (recursive) {
+    recursive_parsed_args = parsed;
+    recursive_state = state;
+    bad += nftw(args[0].c_str(), do_SetMetadataRecursive, 30, FTW_CHDIR | FTW_DEPTH | FTW_PHYS);
+    memset(&recursive_parsed_args, 0, sizeof(recursive_parsed_args));
+    recursive_state = NULL;
+  } else {
+    bad += ApplyParsedPerms(state, args[0].c_str(), &sb, parsed);
+  }
+
+  if (bad > 0) {
+    return ErrorAbort(state, kSetMetadataFailure, "%s: some changes failed", name);
+  }
+
+  return StringValue("");
 }
 
 Value* GetPropFn(const char* name, State* state, const std::vector<std::unique_ptr<Expr>>& argv) {
@@ -1385,6 +1829,7 @@ Value* EnableRebootFn(const char* name, State* state, const std::vector<std::uni
 }
 
 Value* Tune2FsFn(const char* name, State* state, const std::vector<std::unique_ptr<Expr>>& argv) {
+#ifdef HAVE_LIBTUNE2FS
   if (argv.empty()) {
     return ErrorAbort(state, kArgsParsingFailure, "%s() expects args, got %zu", name, argv.size());
   }
@@ -1411,6 +1856,9 @@ Value* Tune2FsFn(const char* name, State* state, const std::vector<std::unique_p
     return ErrorAbort(state, kTune2FsFailure, "%s() returned error code %d", name, result);
   }
   return StringValue("t");
+#else
+  return ErrorAbort(state, kTune2FsFailure, "%s() support not present, no libtune2fs", name);
+#endif // HAVE_LIBTUNE2FS
 }
 
 void RegisterInstallFunctions() {

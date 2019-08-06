@@ -38,6 +38,9 @@
 struct fd_info {
   int fd;
   ev_callback cb;
+#ifdef TW_USE_MINUI_WITH_DATA
+  void* data;
+#endif
 };
 
 static int g_epoll_fd;
@@ -54,7 +57,17 @@ static bool test_bit(size_t bit, unsigned long* array) { // NOLINT
     return (array[bit/BITS_PER_LONG] & (1UL << (bit % BITS_PER_LONG))) != 0;
 }
 
+#ifdef TW_USE_MINUI_WITH_OPTIONAL_TOUCH_EVENTS
 int ev_init(ev_callback input_cb, bool allow_touch_inputs) {
+#else
+#ifdef TW_USE_MINUI_WITH_DATA
+int ev_init(ev_callback input_cb, void* data) {
+#else
+int ev_init(ev_callback input_cb) {
+#endif
+  bool allow_touch_inputs = false;
+#endif
+
   g_epoll_fd = epoll_create(MAX_DEVICES + MAX_MISC_FDS);
   if (g_epoll_fd == -1) {
     return -1;
@@ -98,6 +111,9 @@ int ev_init(ev_callback input_cb, bool allow_touch_inputs) {
 
       ev_fdinfo[ev_count].fd = fd;
       ev_fdinfo[ev_count].cb = std::move(input_cb);
+#ifdef TW_USE_MINUI_WITH_DATA
+      ev_fdinfo[ev_count].data = data;
+#endif
       ev_count++;
       ev_dev_count++;
       if (ev_dev_count == MAX_DEVICES) break;
@@ -119,7 +135,11 @@ int ev_get_epollfd(void) {
     return g_epoll_fd;
 }
 
+#ifdef TW_USE_MINUI_WITH_DATA
+int ev_add_fd(int fd, ev_callback cb, void* data) {
+#else
 int ev_add_fd(int fd, ev_callback cb) {
+#endif
   if (ev_misc_count == MAX_MISC_FDS || cb == NULL) {
     return -1;
   }
@@ -131,6 +151,9 @@ int ev_add_fd(int fd, ev_callback cb) {
   if (!ret) {
     ev_fdinfo[ev_count].fd = fd;
     ev_fdinfo[ev_count].cb = std::move(cb);
+#ifdef TW_USE_MINUI_WITH_DATA
+    ev_fdinfo[ev_count].data = data;
+#endif
     ev_count++;
     ev_misc_count++;
   }
@@ -160,7 +183,11 @@ void ev_dispatch(void) {
     fd_info* fdi = static_cast<fd_info*>(polledevents[n].data.ptr);
     const ev_callback& cb = fdi->cb;
     if (cb) {
+#ifdef TW_USE_MINUI_WITH_DATA
+      cb(fdi->fd, polledevents[n].events, fdi->data);
+#else
       cb(fdi->fd, polledevents[n].events);
+#endif
     }
   }
 }
@@ -175,7 +202,11 @@ int ev_get_input(int fd, uint32_t epevents, input_event* ev) {
     return -1;
 }
 
+#ifdef TW_USE_MINUI_WITH_DATA
+int ev_sync_key_state(ev_set_key_callback set_key_cb, void* data) {
+#else
 int ev_sync_key_state(const ev_set_key_callback& set_key_cb) {
+#endif
   // Use unsigned long to match ioctl's parameter type.
   unsigned long ev_bits[BITS_TO_LONGS(EV_MAX)];    // NOLINT
   unsigned long key_bits[BITS_TO_LONGS(KEY_MAX)];  // NOLINT
@@ -196,7 +227,11 @@ int ev_sync_key_state(const ev_set_key_callback& set_key_cb) {
 
     for (int code = 0; code <= KEY_MAX; code++) {
       if (test_bit(code, key_bits)) {
+#ifdef TW_USE_MINUI_WITH_DATA
+        set_key_cb(code, 1, data);
+#else
         set_key_cb(code, 1);
+#endif
       }
     }
   }
@@ -234,6 +269,7 @@ void ev_iterate_available_keys(const std::function<void(int)>& f) {
     }
 }
 
+#ifdef TW_USE_MINUI_WITH_OPTIONAL_TOUCH_EVENTS
 void ev_iterate_touch_inputs(const std::function<void(int)>& action) {
   for (size_t i = 0; i < ev_dev_count; ++i) {
     // Use unsigned long to match ioctl's parameter type.
@@ -257,3 +293,4 @@ void ev_iterate_touch_inputs(const std::function<void(int)>& action) {
     }
   }
 }
+#endif

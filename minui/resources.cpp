@@ -30,8 +30,8 @@
 #include <string>
 #include <vector>
 
-#include <android-base/stringprintf.h>
-#include <android-base/strings.h>
+//#include <android-base/stringprintf.h> // does not exist in 6.0
+//#include <android-base/strings.h> // does not exist in 6.0
 #include <png.h>
 
 #include "minui/minui.h"
@@ -98,8 +98,10 @@ class PngHandler {
 };
 
 PngHandler::PngHandler(const std::string& name) : error_code_(0), png_fp_(nullptr, fclose) {
-  std::string res_path = android::base::StringPrintf("/res/images/%s.png", name.c_str());
-  png_fp_.reset(fopen(res_path.c_str(), "rbe"));
+  char res_path[PATH_MAX];
+  sprintf(res_path, "/res/images/%s.png", name.c_str());
+  //std::string res_path = sprintf("/res/images/%s.png", name.c_str());
+  png_fp_.reset(fopen(res_path, "rbe"));
   if (!png_fp_) {
     error_code_ = -1;
     return;
@@ -348,6 +350,12 @@ exit:
   return result;
 }
 
+int res_create_multi_display_surface(const char* name, int* frames,
+        GRSurface*** pSurface) {
+    int fps = 0;
+    return res_create_multi_display_surface(name, frames, &fps, pSurface);
+}
+
 int res_create_alpha_surface(const char* name, GRSurface** pSurface) {
   *pSurface = nullptr;
 
@@ -397,7 +405,8 @@ bool matches_locale(const std::string& prefix, const std::string& locale) {
   // match the locale string without the {script} section.
   // For instance, prefix == "en" matches locale == "en-US", prefix == "sr-Latn" matches locale
   // == "sr-Latn-BA", and prefix == "zh-CN" matches locale == "zh-Hans-CN".
-  if (android::base::StartsWith(locale, prefix)) {
+  //if (android::base::StartsWith(locale, prefix)) { // does not exist in 6.0
+  if (strncmp(prefix.c_str(), locale.c_str(), prefix.length()) == 0) {
     return true;
   }
 

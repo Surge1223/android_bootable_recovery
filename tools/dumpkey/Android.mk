@@ -14,9 +14,14 @@
 
 LOCAL_PATH := $(call my-dir)
 
+# Pre Oreo trees have dumpkey defined elsewhere in the tree
+ifeq ($(shell test $(PLATFORM_SDK_VERSION) -ge 26; echo $$?),0)
+
 include $(CLEAR_VARS)
 LOCAL_MODULE := dumpkey
 LOCAL_SRC_FILES := DumpPublicKey.java
 LOCAL_JAR_MANIFEST := DumpPublicKey.mf
 LOCAL_STATIC_JAVA_LIBRARIES := bouncycastle-host
 include $(BUILD_HOST_JAVA_LIBRARY)
+
+endif

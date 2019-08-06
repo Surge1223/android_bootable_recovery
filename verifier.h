@@ -25,6 +25,12 @@
 #include <openssl/rsa.h>
 #include <openssl/sha.h>
 
+#define ASSUMED_UPDATE_BINARY_NAME  "META-INF/com/google/android/update-binary"
+
+enum { INSTALL_SUCCESS, INSTALL_ERROR, INSTALL_CORRUPT, INSTALL_RETRY };
+
+static const float VERIFICATION_PROGRESS_FRAC = 0.25;
+
 struct RSADeleter {
   void operator()(RSA* rsa) const {
     RSA_free(rsa);

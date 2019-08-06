@@ -24,7 +24,9 @@
 #include <unistd.h>
 
 #include <adf/adf.h>
+#ifdef HAS_LIBSYNC
 #include <sync/sync.h>
+#endif
 
 #include "minui/minui.h"
 
@@ -108,6 +110,8 @@ GRSurface* MinuiBackendAdf::Init() {
   format = DRM_FORMAT_ABGR8888;
 #elif defined(RECOVERY_BGRA)
   format = DRM_FORMAT_BGRA8888;
+#elif defined(RECOVERY_RGBA)
+  format = DRM_FORMAT_RGBA8888;
 #elif defined(RECOVERY_RGBX)
   format = DRM_FORMAT_RGBX8888;
 #else
@@ -151,7 +155,8 @@ GRSurface* MinuiBackendAdf::Init() {
   return ret;
 }
 
-void MinuiBackendAdf::Sync(GRSurfaceAdf* surf) {
+void MinuiBackendAdf::Sync(__unused GRSurfaceAdf* surf) {
+#ifdef HAS_LIBSYNC
   static constexpr unsigned int warningTimeout = 3000;
 
   if (surf == nullptr) return;
@@ -165,6 +170,7 @@ void MinuiBackendAdf::Sync(GRSurfaceAdf* surf) {
     close(surf->fence_fd);
     surf->fence_fd = -1;
   }
+#endif
 }
 
 GRSurface* MinuiBackendAdf::Flip() {

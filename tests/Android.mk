@@ -42,7 +42,7 @@ LOCAL_SRC_FILES := \
     unit/zip_test.cpp \
     unit/ziputil_test.cpp
 
-LOCAL_C_INCLUDES := bootable/recovery
+LOCAL_C_INCLUDES := $(commands_recovery_local_path)
 LOCAL_SHARED_LIBRARIES := liblog
 include $(BUILD_NATIVE_TEST)
 
@@ -102,7 +102,7 @@ endif
 
 LOCAL_MODULE := recovery_component_test
 LOCAL_COMPATIBILITY_SUITE := device-tests
-LOCAL_C_INCLUDES := bootable/recovery
+LOCAL_C_INCLUDES := $(commands_recovery_local_path)
 LOCAL_SRC_FILES := \
     component/applypatch_test.cpp \
     component/bootloader_message_test.cpp \
