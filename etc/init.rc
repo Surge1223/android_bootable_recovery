@@ -1,5 +1,4 @@
 import /init.recovery.logd.rc
-import /init.recovery.mksh.rc
 import /init.recovery.usb.rc
 import /init.recovery.service.rc
 import /init.recovery.vold_decrypt.rc
@@ -9,8 +8,6 @@ on early-init
     # Apply strict SELinux checking of PROT_EXEC on mmap/mprotect calls.
     write /sys/fs/selinux/checkreqprot 0
 
-    # Set the security context for the init process.
-    # This should occur before anything else (e.g. ueventd) is started.
     setcon u:r:init:s0
 
     # Set the security context of /postinstall if present.
@@ -30,9 +27,12 @@ on init
     export ANDROID_DATA /data
     export EXTERNAL_STORAGE /sdcard
 
+    symlink /system/bin /bin
+    symlink /system/etc /etc
     mount cgroup none /acct cpuacct
     mkdir /acct/uid
 
+    mkdir /sdcard
     mkdir /system
     mkdir /data
     mkdir /cache
@@ -47,9 +47,20 @@ on init
 
 on fs
     mount pstore pstore /sys/fs/pstore
+    write /sys/class/android_usb/android0/f_ffs/aliases adb
     mkdir /dev/usb-ffs 0770 shell shell
     mkdir /dev/usb-ffs/adb 0770 shell shell
     mount functionfs adb /dev/usb-ffs/adb uid=2000,gid=2000
+    mkdir /dev/usb-ffs/mtp 0770 shell shell
+    mount functionfs mtp /dev/usb-ffs/mtp uid=2000,gid=2000
+
+    write /sys/class/android_usb/android0/enable 0
+    write /sys/class/android_usb/android0/idVendor 18D1
+    write /sys/class/android_usb/android0/idProduct D001
+    write /sys/class/android_usb/android0/functions adb
+    write /sys/class/android_usb/android0/iManufacturer ${ro.product.manufacturer}
+    write /sys/class/android_usb/android0/iProduct ${ro.product.model}
+    write /sys/class/android_usb/android0/iSerial ${ro.serialno}
 
 on boot
     ifup lo
@@ -104,6 +115,12 @@ service ueventd /sbin/ueventd
     critical
     seclabel u:r:ueventd:s0
 
+service charger /charger -r
+    critical
+    seclabel u:r:charger:s0
+
+service recovery /sbin/recovery
+    seclabel u:r:recovery:s0
 service adbd /sbin/adbd --root_seclabel=u:r:su:s0 --device_banner=recovery
     disabled
     socket adbd stream 660 system system
@@ -120,3 +137,4 @@ on property:service.adb.root=1
     write /sys/class/android_usb/android0/enable 0
     restart adbd
     write /sys/class/android_usb/android0/enable 1
+
