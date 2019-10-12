@@ -26,6 +26,7 @@
 
 #include "recovery_ui/ui.h"
 
+
 typedef std::pair<std::string, Device::BuiltinAction> menu_action_t;
 
 static std::vector<std::string> g_main_header{};
@@ -38,9 +39,12 @@ static std::vector<menu_action_t> g_main_actions{
 
 static std::vector<std::string> g_advanced_header{ "Advanced options" };
 static std::vector<menu_action_t> g_advanced_actions{
-  { "Enter fastboot", Device::ENTER_FASTBOOT },
+  { "Reboot system now", Device::REBOOT },
+  { "Enter fastbootd", Device::ENTER_FASTBOOT },
   { "Reboot to bootloader", Device::REBOOT_BOOTLOADER },
   { "Reboot to recovery", Device::REBOOT_RECOVERY },
+  { "Wipe cache partition", Device::WIPE_CACHE },
+  { "Wipe data without sd", Device::WIPE_DATA_WITHOUT_SD },
   { "Mount /system", Device::MOUNT_SYSTEM },
   { "View recovery logs", Device::VIEW_RECOVERY_LOGS },
   { "Enable ADB", Device::ENABLE_ADB },
@@ -48,14 +52,16 @@ static std::vector<menu_action_t> g_advanced_actions{
   { "Run locale test", Device::RUN_LOCALE_TEST },
   { "Enter rescue", Device::ENTER_RESCUE },
   { "Power off", Device::SHUTDOWN },
+  { "Format cache partition", Device::WIPE_CACHE },
+  { "Format system partition", Device::WIPE_SYSTEM },
 };
+
 
 static std::vector<std::string> g_wipe_header{ "Factory reset" };
 static std::vector<menu_action_t> g_wipe_actions{
-  { "Wipe data (excludes internal storage)", Device::WIPE_DATA_EXCLUDE_MEDIA},
-  { "Format data partition", Device::WIPE_DATA },
-  { "Format cache partition", Device::WIPE_CACHE },
-  { "Format system partition", Device::WIPE_SYSTEM },
+  { "Wipe data/factory reset", Device::WIPE_DATA },
+  { "Wipe cache partition", Device::WIPE_CACHE },
+  { "Wipe system partition", Device::WIPE_SYSTEM },
 };
 
 static std::vector<menu_action_t>* current_menu_ = &g_main_actions;
@@ -114,6 +120,7 @@ Device::BuiltinAction Device::InvokeMenuItem(size_t menu_position) {
       default:
         break;
     }
+    action = Device::BuiltinAction::NO_ACTION;
     PopulateMenuItems();
   }
   return action;
@@ -167,3 +174,4 @@ int Device::HandleMenuKey(int key, bool visible) {
       return ui_->HasThreeButtons() ? kNoAction : kHighlightDown;
   }
 }
+

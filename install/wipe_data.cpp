@@ -163,14 +163,20 @@ bool WipeSystem(RecoveryUI* ui, const std::function<bool()>& confirm_func) {
   return success;
 }
 
-bool WipeDataExcludeMedia(RecoveryUI* ui, const std::function<bool()>& confirm_func) {
+bool WipeDataWithoutSD(Device* device, RecoveryUI* ui, const std::function<bool()>& confirm_func) {
+  bool has_data = volume_for_mount_point("/data") != nullptr;
+  if (!has_data) {
+    ui->Print("No /data partition found.\n");
+    return false;
+  }
+  ui->Print("/data partition found.\n");
   if (confirm_func && !confirm_func()) {
     return false;
   }
+  ui->Print("\n-- Wiping data without wiping sdcard...\n");
+  bool success = device->PreWipeData();
 
-  bool success = false;
-  ui->Print("\n-- Wiping data without internal storage...\n");
-  if (ensure_path_mounted(DATA_ROOT) == 0) {
+    if (has_data) {
     std::vector<std::string> delete_files_args = {
       "/system/bin/find", DATA_ROOT, "-type", "f",
     };
@@ -192,6 +198,6 @@ bool WipeDataExcludeMedia(RecoveryUI* ui, const std::function<bool()>& confirm_f
     exec_cmd(delete_dirs_args);
     ensure_path_unmounted(DATA_ROOT);
   }
-  ui->Print("Data wipe %s.\n", success ? "complete" : "failed");
+  ui->Print("Data wipe without wiping sdcard  %s.\n", success ? "complete" : "failed");
   return success;
 }
