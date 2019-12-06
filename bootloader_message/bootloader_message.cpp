@@ -29,6 +29,7 @@
 #include <android-base/stringprintf.h>
 #include <android-base/unique_fd.h>
 #include <fstab/fstab.h>
+#include <sys/system_properties.h>
 
 using android::fs_mgr::Fstab;
 using android::fs_mgr::ReadDefaultFstab;
