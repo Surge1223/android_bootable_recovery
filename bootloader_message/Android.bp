@@ -43,5 +43,14 @@ cc_library_static {
     defaults: [
         "libbootloader_message_defaults",
     ],
+    recovery_available: true,
+    vendor: true,
+}
+
+cc_library_static {
+    name: "libbootloader_message_system",
+    defaults: [
+        "libbootloader_message_defaults",
+    ],
     vendor: true,
 }
