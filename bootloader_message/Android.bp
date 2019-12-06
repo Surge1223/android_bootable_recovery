@@ -43,8 +43,8 @@ cc_library_static {
     defaults: [
         "libbootloader_message_defaults",
     ],
-    recovery_available: true,
     vendor: true,
+    recovery_available: true,
 }
 
 cc_library_static {
@@ -52,5 +52,5 @@ cc_library_static {
     defaults: [
         "libbootloader_message_defaults",
     ],
-    vendor: true,
+    recovery_available: true,
 }

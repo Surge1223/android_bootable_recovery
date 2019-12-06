@@ -46,6 +46,7 @@ cc_library_static {
     ],
 
     shared_libs: [
+        "libfs_mgr",
         "libbase",
     ],
 
@@ -80,8 +81,21 @@ cc_library_static {
 
 cc_library_static {
     name: "libmisc_writer_system",
-    defaults: [
-        "misc_writer_defaults",
+    cpp_std: "experimental",
+
+    cflags: [
+        "-Wall",
+        "-Werror",
+    ],
+
+    shared_libs: [
+        "libbase",
+        "libfs_mgr",
+    ],
+
+    static_libs: [
+        "libbootloader_message_system",
+        "libfstab",
     ],
 
     srcs: [
@@ -95,23 +109,42 @@ cc_library_static {
 
 cc_binary {
     name: "misc_writer",
-    defaults: [
-        "misc_writer_defaults",
+    cpp_std: "experimental",
+
+    cflags: [
+        "-Wall",
+        "-Werror",
     ],
+
 
     srcs: [
         "misc_writer_main.cpp",
     ],
 
+    shared_libs: [
+        "libbase",
+        "libfs_mgr",
+    ],
+
     static_libs: [
-        "libmisc_writer_vendor",
+        "libbootloader_message_system",
+        "libfstab",
+        "libmisc_writer_system",
     ]
 }
 
 cc_binary {
     name: "misc_writer_system",
-    defaults: [
-        "misc_writer_defaults",
+    cpp_std: "experimental",
+
+    cflags: [
+        "-Wall",
+        "-Werror",
+    ],
+
+    shared_libs: [
+        "libbase",
+        "libfs_mgr",
     ],
 
     srcs: [
