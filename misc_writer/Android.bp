@@ -119,7 +119,7 @@ cc_binary {
     ],
 
     static_libs: [
-        "libmisc_writer_system".
+        "libmisc_writer_system",
     ],
 }
 
