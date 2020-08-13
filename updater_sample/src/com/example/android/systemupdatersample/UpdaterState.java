@@ -21,6 +21,7 @@ import android.util.SparseArray;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -81,7 +82,7 @@ public class UpdaterState {
      */
     public void set(int newState) throws InvalidTransitionException {
         int oldState = mState.get();
-        if (!TRANSITIONS.get(oldState).contains(newState)) {
+        if (!Objects.requireNonNull(TRANSITIONS.get(oldState)).contains(newState)) {
             throw new InvalidTransitionException(
                     "Can't transition from " + oldState + " to " + newState);
         }

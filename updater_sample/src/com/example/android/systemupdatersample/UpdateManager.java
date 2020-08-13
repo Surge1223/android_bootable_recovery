@@ -79,7 +79,7 @@ public class UpdateManager {
 
     private final Object mLock = new Object();
 
-    private final UpdateManager.UpdateEngineCallbackImpl
+    private UpdateManager.UpdateEngineCallbackImpl
             mUpdateEngineCallback = new UpdateManager.UpdateEngineCallbackImpl();
 
     private final Handler mHandler;
@@ -100,7 +100,7 @@ public class UpdateManager {
         getOnStateChangeCallback().ifPresent(callback -> callback.accept(mUpdaterState.get()));
 
         mStateSynchronized.set(false);
-        this.mUpdateEngine.bind(mUpdateEngineCallback);
+        mUpdateEngine.bind(mUpdateEngineCallback);
     }
 
     /**
