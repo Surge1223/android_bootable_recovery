@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<permissions>    
+ <privapp-permissions package="com.example.android.systemupdatersample">
+     <permission name="android.permission.ACCESS_CACHE_FILESYSTEM"/>
+     <permission name="android.permission.PACKAGE_USAGE_STATS"/>
+     <permission name="android.permission.INTERACT_ACROSS_USERS"/>
+     <permission name="android.permission.WRITE_SECURE_SETTINGS"/>
+ </privapp-permissions>
+
+</permissions>
+
+

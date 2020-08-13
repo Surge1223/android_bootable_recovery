@@ -22,7 +22,7 @@ public final class PackageFiles {
     /**
      * Directory used to perform updates.
      */
-    public static final String OTA_PACKAGE_DIR = "/data/ota_package";
+    public static final String OTA_PACKAGE_DIR = "/data/dirtyunicorns_updates";
 
     /**
      * update payload, it will be passed to {@code UpdateEngine#applyPayload}.

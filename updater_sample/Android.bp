@@ -15,6 +15,10 @@
 android_app {
     name: "SystemUpdaterSample",
     sdk_version: "system_current",
+    manifest: "AndroidManifest.xml",
+
+    product_specific: true,
+    certificate: "platform",
     privileged: true,
 
     srcs: ["src/**/*.java"],
@@ -30,4 +34,14 @@ android_app {
     },
 
     resource_dirs: ["res"],
+    required: ["privapp_whitelist_com.example.android.systemupdatersample"],
+
+}
+
+prebuilt_etc {
+    name: "privapp_whitelist_com.example.android.systemupdatersample",
+    product_specific: true,
+    sub_dir: "permissions",
+    src: "com.example.android.systemupdatersample.xml",
+    filename_from_src: true,
 }

@@ -1,0 +1,44 @@
+{
+    "__": "*** Generated using tools/gen_update_config.py ***",
+    "ab_config": {
+        "verify_payload_metadata": true,
+        "force_switch_slot": false,
+        "property_files": [
+            {
+                "filename": "payload_metadata.bin",
+                "offset": 45085,
+                "size": 93450
+            },
+            {
+                "filename": "payload.bin",
+                "offset": 45085,
+                "size": 1403729534
+            },
+            {
+                "filename": "payload_properties.txt",
+                "offset": 1403774677,
+                "size": 155
+            },
+            {
+                "filename": "care_map.pb",
+                "offset": 751,
+                "size": 539
+            },
+            {
+                "filename": "compatibility.zip",
+                "offset": 1343,
+                "size": 43695
+            },
+            {
+                "filename": "metadata",
+                "offset": 69,
+                "size": 635
+            }
+        ],
+        "verify_payload_metadata": false
+    },
+    "ab_install_type": "NON_STREAMING",
+    "name": "N du_coral-v14.6-20200811-1942-RC",
+    "url": "file:///data/dirtyunicorns_updates/du_coral-v14.6-20200811-1942-RC.zip"
+}
+
